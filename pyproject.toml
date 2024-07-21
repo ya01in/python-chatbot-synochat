@@ -1,0 +1,22 @@
+[tool.poetry]
+name = "python-synology-chatbot"
+version = "0.1.0"
+description = "Chatbot services for Synology Chat in python"
+authors = ["ya01in <yaolin45040@gmail.com>"]
+readme = "README.md"
+package-mode = false
+
+[tool.poetry.dependencies]
+python = "^3.10"
+Flask = "^3.0.3"
+requests = "^2.32.3"
+Werkzeug = "^3.0.3"
+mypy = "^1.10.1"
+flask-apscheduler = "^1.13.1"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
+
+[tool.poetry.scripts]
+server = "synochat:main"
