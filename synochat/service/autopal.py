@@ -291,18 +291,16 @@ Go for a shot!!!
         if not is_sub:
             return 'You are not subscribed yet, see "help" for usage'
 
-        note: str = event.text.split("note")[1]
-        ap_note: str = str(event.timestamp) + note
-        self._sub_notes[event.user_id][self._sub_list[event.user_id].idx_hour] = (
-            ap_note
-            if not self._sub_notes[event.user_id][
-                self._sub_list[event.user_id].idx_hour
-            ]
-            else (
-                self._sub_notes[event.user_id][self._sub_list[event.user_id].idx_hour]
-                + ap_note
+        note: str = " ".join(event.text.split()[1:])
+        ap_note: str = event.timestamp.strftime("%H:%M") + " " + note
+        idx_hour: int = self._sub_list[event.user_id].idx_hour
+        if self._sub_notes[event.user_id][idx_hour]:
+            self._sub_notes[event.user_id][idx_hour] = (
+                self._sub_notes[event.user_id][idx_hour] + "\n" + ap_note
             )
-        )
+        else:
+            self._sub_notes[event.user_id][idx_hour] = ap_note
+
         return f"On time:{self._sub_list[event.user_id].idx_hour + 1} log note:{note}"
 
     def amend(self, event: chat_event.PostEvent) -> str:
