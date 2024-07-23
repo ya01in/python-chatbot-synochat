@@ -215,8 +215,8 @@ Go for a shot!!!
     def angnome(self) -> None:
         # hourly reminder
         now: datetime.datetime = datetime.datetime.now()
-        # if now.hour < 22 and now.hour > 8:
-        if now:
+        if now.hour < 22 and now.hour > 8:
+            # if now:
             logging.info("Start angnome")
             remind_list: List[subscribe.SubInfo] = []
             for _uid, subinfo in self._sub_list.items():
