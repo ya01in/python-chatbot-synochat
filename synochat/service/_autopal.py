@@ -1,17 +1,12 @@
 import datetime
 import logging
-import os
 import pprint
 from typing import Dict, List, Set
 
-from apscheduler.schedulers.background import BackgroundScheduler
-from apscheduler.triggers.cron import CronTrigger
-from flask import Flask, Response, request, send_file
-from model import chat_event, subscribe
-from model.lc import Challenge
-from req.daily import RequestHandler, RequestParser
+from model import subscribe
 from service import study_bot
-from werkzeug.datastructures.structures import ImmutableMultiDict
+
+from synochat.model import syno
 
 HELP_NOTE = """
 ~~ *Me Gnome here* ~~
@@ -57,37 +52,13 @@ To-Do list:
 """
 
 
-class AutoPal(Flask):
-    def __init__(
-        self,
-        import_name: str,
-        static_url_path: str | None = None,
-        static_folder: str | os.PathLike[str] | None = "static",
-        static_host: str | None = None,
-        host_matching: bool = False,
-        subdomain_matching: bool = False,
-        template_folder: str | os.PathLike[str] | None = "templates",
-        instance_path: str | None = None,
-        instance_relative_config: bool = False,
-        root_path: str | None = None,
-    ) -> None:
-        super().__init__(
-            import_name=import_name,
-            static_url_path=static_url_path,
-            static_folder=static_folder,
-            static_host=static_host,
-            host_matching=host_matching,
-            subdomain_matching=subdomain_matching,
-            template_folder=template_folder,
-            instance_path=instance_path,
-            instance_relative_config=instance_relative_config,
-            root_path=root_path,
-        )
+class HourReminder:
+    def __init__(self) -> None:
         self._sub_list: Dict[int, subscribe.SubInfo] = {}
         self._sub_id: Set[int] = set()
         self._sub_notes: Dict[int, List[str]] = {}
 
-    def parse_service(self, event: chat_event.PostEvent) -> str:
+    def parse_command(self, event: syno.BotEvent):
         words: list[str] = event.text.split()
         command = words[0]
         ret: str = ""
@@ -105,8 +76,6 @@ class AutoPal(Flask):
                 ret = self.amend(event)
             case "progress":
                 ret = PROGRESS
-            case "lc":
-                ret = self.leetcode()
             case "on":
                 ret = self.onboard(event)
             case "note":
@@ -115,10 +84,6 @@ class AutoPal(Flask):
                 self._print_status(event)
             case "_set_on":
                 ret = self._set_on_time(event)
-            # case 'note':
-            #     ret = 'NotImplementedError'
-            # case 'off':
-            #     ret = 'NotImplementedError'
             # case 'skip':
             #     ret = 'NotImplementedError'
             case _:
@@ -126,26 +91,6 @@ class AutoPal(Flask):
 
         logging.debug(f"parsed result:{ret}")
         return ret
-
-    def leetcode(self):
-        challenge_info = RequestHandler.get_challenge_info()
-        challenge: Challenge = RequestParser.parse(challenge_info)
-        response_text: str = f"""
-Today's challenge: {challenge.title}
-Difficulty: {challenge.difficulty}
-ID: {challenge.question_id}
-Link: {challenge.problem_link}
-Success rate: {challenge.ac_rate}
-Go for a shot!!!
-"""
-        return response_text
-
-    def throw_up(self, user_id) -> None:
-        study_bot.web_post.send_message(
-            response_text="what is that?",
-            user_id=user_id,
-            file_url=f"{request.host_url}download/gtu.gif",
-        )
 
     def _print_status(self, event) -> None:
         study_bot.web_post.send_message(
@@ -161,7 +106,7 @@ Go for a shot!!!
             user_id=event.user_id,
         )
 
-    def register(self, event: chat_event.PostEvent, sub: bool):
+    def register(self, event: syno.PostEvent, sub: bool):
         # check if sub
         username, userid = event.username, event.user_id
         is_sub: bool = True if event.user_id in self._sub_id else False
@@ -253,7 +198,7 @@ Go for a shot!!!
             logging.debug(f"user:{self._sub_list[uid].u_name} have been clear")
         logging.info("Finished cleaning all the gnomes.")
 
-    def check_for_note(self, event: chat_event.PostEvent) -> str:
+    def check_for_note(self, event: syno.PostEvent) -> str:
         is_sub: bool = True if event.user_id in self._sub_id else False
         if not is_sub:
             logging.debug(f"user:{event.username} is not sub")
@@ -274,11 +219,11 @@ Go for a shot!!!
             ret = (
                 f'unknown command: {command}\nTry "help" for current available services'
             )
-            ret += " " + "".join(paras)
+            ret += " " + " ".join(paras)
 
         return ret
 
-    def note(self, event: chat_event.PostEvent) -> str:
+    def note(self, event: syno.PostEvent) -> str:
         """Append note on current time
 
         Args:
@@ -303,7 +248,7 @@ Go for a shot!!!
 
         return f"On time:{self._sub_list[event.user_id].idx_hour + 1} log note:{note}"
 
-    def amend(self, event: chat_event.PostEvent) -> str:
+    def amend(self, event: syno.PostEvent) -> str:
         is_sub: bool = True if event.user_id in self._sub_id else False
         if not is_sub:
             return 'You are not subscribed yet, see "help" for usage'
@@ -323,7 +268,7 @@ Go for a shot!!!
             logging.info(f"user:{event.username} amended hour:{hour-1} log.")
             return f'Amend hour:{hour} log. use "log" to see the latest version'
 
-    def _set_on_time(self, event: chat_event.PostEvent) -> str:
+    def _set_on_time(self, event: syno.PostEvent) -> str:
         words_space: List[str] = event.text.split(" ")
         set_datetime = datetime.datetime(
             int(words_space[1]),
@@ -338,7 +283,7 @@ Go for a shot!!!
             f"Set user:{event.username} on time:{self._sub_list[event.user_id].on_time}"
         )
 
-    def onboard(self, event: chat_event.PostEvent) -> str:
+    def onboard(self, event: syno.PostEvent) -> str:
         logging.debug(f"user:{event.username} request to set on board time")
         is_sub: bool = True if event.user_id in self._sub_id else False
         now: datetime.datetime = datetime.datetime.now()
@@ -351,7 +296,7 @@ Go for a shot!!!
         logging.info(f"user:{event.username} set on board time:{now}")
         return f"set on board time: {now.hour}:{now.minute}"
 
-    def show_log(self, event: chat_event.PostEvent) -> None:
+    def show_log(self, event: syno.PostEvent) -> None:
         is_sub: bool = True if event.user_id in self._sub_id else False
         if is_sub:
             word_count = 0
@@ -396,63 +341,6 @@ Go for a shot!!!
                 user_id=event.user_id,
             )
             logging.debug(f"user:{event.username} is not sub")
-
-
-# server instance
-
-
-app_autopal = AutoPal(__name__)
-
-
-# anGnomeing
-
-scheduler = BackgroundScheduler()
-scheduler.add_job(
-    name="DailyGnome",
-    func=app_autopal.angnome,
-    # trigger=CronTrigger(day_of_week="mon-fri", second=1),
-    trigger=CronTrigger(second=1),
-)
-
-scheduler.add_job(
-    name="ResetDailyGnome",
-    func=app_autopal.clean_gnome,
-    trigger=CronTrigger(day_of_week="mon-fri", hour=7, minute=30),
-)
-
-
-# routes
-
-
-@app_autopal.route("/webhook", methods=["POST"])
-def webhook() -> Dict[str, str]:
-    # Parse URL-encoded form data
-    form_data: ImmutableMultiDict[str, str] = request.form
-    logging.debug(f"raw_request:{pprint.pformat(form_data)}")
-    event = chat_event.BotEvent(
-        token=form_data["token"],
-        user_id=int(form_data["user_id"]),
-        username=form_data["username"],
-        post_id=int(form_data["post_id"]),
-        thread_id=int(form_data["thread_id"]),
-        timestamp=datetime.datetime.fromtimestamp(
-            float(form_data["timestamp"]) / 1000.0
-        ),
-        text=form_data["text"],
-    )
-    if not event:
-        logging.error(f"empty event catched, may have a error? event:{event}")
-    logging.debug(f"Raw event:{event}")
-
-    ret: str = app_autopal.parse_service(event)
-
-    return {"text": ret}
-
-
-@app_autopal.route("/download/gtu.gif")
-def download_gnome_throwup() -> Response:
-    path = "/home/yaolin/Workspaces/python-synology-chatbot/synochat/assets/gtu_s.gif"
-    return send_file(path, as_attachment=False)
 
 
 if __name__ == "__main__":
