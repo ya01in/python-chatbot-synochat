@@ -75,8 +75,7 @@ class Agnomeing:
         self.scheduler.add_job(
             name="DailyGnome",
             func=self.angnome,
-            # trigger=CronTrigger(day_of_week="mon-fri", second=1),
-            trigger=CronTrigger(second=1),
+            trigger=CronTrigger(day_of_week="mon-fri", second=1),
         )
 
         self.scheduler.add_job(
@@ -90,7 +89,6 @@ class Agnomeing:
         # hourly reminder
         now: datetime.datetime = datetime.datetime.now()
         if now.hour < 22 and now.hour > 8:
-            # if now:
             logging.info("Start angnome")
             remind_list: List[subscribe.SubInfo] = []
             for _uid, subinfo in self._sub_list.items():
