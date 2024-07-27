@@ -14,23 +14,25 @@ from service_conf import BOT_CONF, BOT_SERVER_CONF, ServiceConf
 from werkzeug.datastructures.structures import ImmutableMultiDict
 
 SERVER_HELP_NOTE = """
-~~ *Me Gnome here* ~~
-Usage:
-`progress`: Show the latest progress of this bot.
+~~ *Bot Basic Usage* ~~
+`progress`: Show the latest progress of this bot service.
+`service`: Show subscribable services.
+`sub <SERVICE_NAME>`: Subscribe SERVICE.
+`unsub <SERVICE_NAME>`: Unsubscribe SERVICE.
 """
 
 
 SERVER_PROGRESS = """
-2024.07.19 -
-    1. Fix message length bug.
-    2. Add daily reset method.
+~~ *Bot Progress* ~~
 2024.07.21 -
     1. Fix request function
+2024.07.27 -
+    1. Restructured server.
+"""
 
-To-Do list:
-    * _print_status log need to be a function
-    * add append feature
-    * add skip feature
+# add service name if create new service
+SERVICES = """
+*reminder* : hourly remind for work summary, for more info, see `help` after subscribe.
 """
 
 
@@ -63,6 +65,30 @@ class ServiceServer(Flask):
         self.schedular.start()
         self.run(host=self.host, port=self.port)
 
+    def parse_input(self, event: syno.BotEvent) -> syno.ReturnDict:
+        words: list[str] = event.text.split()
+        command = words[0]
+        ret_dict: syno.ReturnDict = {}
+        if command in self.agnomer.command_keys:
+            ret_dict = self.agnomer.parse_command(event)
+        else:
+            match command:
+                case "help":
+                    ret_dict["text"] = self.show_help(event)
+                case "service":
+                    ret_dict["text"] = self.show_service()
+                case "progress":
+                    ret_dict["text"] = self.show_progress(event)
+                case "sub":
+                    ret_dict["text"] = self.register_service(event, True)
+                case "unsub":
+                    ret_dict["text"] = self.register_service(event, False)
+                case _:
+                    ret_dict = self.report_unknown(event)
+
+        logging.debug(f"parsed result:{ret_dict}")
+        return ret_dict
+
     def report_unknown(self, event: syno.PostEvent) -> syno.ReturnDict:
         # throw up and return app
         words: list[str] = event.text.split()
@@ -75,20 +101,42 @@ class ServiceServer(Flask):
         )
         return {"text": ret_text, "file_url": f"{request.host_url}download/gtu.gif"}
 
-    def parse_input(self, event: syno.PostEvent) -> syno.ReturnDict:
-        words: list[str] = event.text.split()
-        command = words[0]
-        ret_dict: syno.ReturnDict = {}
-        match command:
-            case "help":
-                ret_dict["text"] = SERVER_HELP_NOTE
-            case "progress":
-                ret_dict["text"] = SERVER_PROGRESS
-            case _:
-                ret_dict = self.report_unknown(event)
+    def show_help(self, event: syno.PostEvent) -> str:
+        # show appended help
+        # check sub for services
+        help_note = SERVER_HELP_NOTE
+        if event.user_id in self.agnomer._sub_id:
+            help_note += "\n" + self.agnomer.help
 
-        logging.debug(f"parsed result:{ret_dict}")
-        return ret_dict
+        return help_note
+
+    def show_progress(self, event: syno.PostEvent) -> str:
+        progress = SERVER_PROGRESS
+        if event.user_id in self.agnomer._sub_id:
+            progress += "\n" + self.agnomer.progress
+
+        return progress
+
+    def show_service(self) -> str:
+        """Show available services
+
+        Returns:
+            str: service list
+        """
+        list_service = "Current available services:"
+        return list_service + SERVICES
+
+    def register_service(self, event: syno.PostEvent, sub: bool):
+        words: list[str] = event.text.split()
+        service_name: str = words[1] if len(words) > 1 else " "
+        match service_name:
+            case "reminder":
+                return self.agnomer.register(event, sub)
+            case _:
+                return (
+                    f"Unknow services:'{service_name}'.\n"
+                    "Use `services` to see availible services"
+                )
 
     # routes
     def webhook(self) -> syno.ReturnDict:
@@ -124,7 +172,6 @@ if __name__ == "__main__":
     scheduler = BackgroundScheduler()
     service_server = ServiceServer(
         name=__name__,
-        schedular=scheduler,
         host=BOT_SERVER_CONF["ip"],
         port=BOT_SERVER_CONF["port"],
         bot_service_conf=BOT_CONF,
