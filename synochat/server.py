@@ -56,7 +56,9 @@ class ServiceServer(Flask):
         self.host: str = host
         self.port: int = port
         # service
-        self.agnomer: reminder.Agnomeing = reminder.Agnomeing()
+        self.agnomer: reminder.Agnomeing = reminder.Agnomeing(
+            chat_api=self.syno_api, scheduler=self.schedular
+        )
         # route
         self.add_url_rule("/webhook", view_func=self.webhook, methods=["POST"])
         self.add_url_rule("/download/gtu.gif", view_func=self.download_gnome_throwup)
@@ -139,6 +141,7 @@ class ServiceServer(Flask):
                 )
 
     # routes
+
     def webhook(self) -> syno.ReturnDict:
         # Parse URL-encoded form data
         form_data: ImmutableMultiDict[str, str] = request.form

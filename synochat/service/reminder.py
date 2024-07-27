@@ -4,74 +4,74 @@ import logging
 import pprint
 from typing import Dict, List, Set
 
+from api.daily import RequestHandler, RequestParser
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
 from model import subscribe, syno
+from model.lc import Challenge
 
 HELP_NOTE = """
-~~ *Me Gnome here* ~~
-Usage:
-`progress`: Show the latest progress of this machine.
-`sub`: Subscribe to hourly check-in and log service. Enable after subscribe to hourly logging service.
-`unsub`: Unsubscribe to hourly check-in and log service. Enable after subscribe to hourly logging service.
-`on`: Start daily timer. Enable after subscribe to hourly logging service.
-`log`: Show accumulated log of today. Enable after subscribe to hourly logging service.
+~~ *Hourly Reminder Gnome Usage* ~~
+`on`: Start daily timer.
+`log`: Show accumulated log of today.
     In the format of below:
 ```
 on_time: 09:32(24 format)
 Logs:
-1(0932 - 1032): get breakfast, write email
-2(1032 - 1132):
+1:
+    get breakfast, write email
+2:
     Ask for 180 HDD drive
     Check on deploy machine
     Deploy env for package XX verification.
 ```
-`amend` <Nth_HOUR> <LOG_MESSAGE>: Amend Nth_HOUR hour log with LOG_MESSAGE.
+`amend <Nth_HOUR> <LOG_MESSAGE>`: Amend Nth_HOUR hour log with LOG_MESSAGE.
     Nth_Hour: 1 ~ 10
     LOG_MESSAGE: one or multiple lines of strings
-    this will output the original log and log the next input. Enable after subscribe to hourly logging service.
+    this will output the original log and log the next input.
     e.g. amend 2 "verifying bug #8964"
 >   Amend hour 2 log from "" to "verifying bug #8964"
-(unavailable) skip [YYYY-MM-DD, YYYY-MM-DD]: skip date(s), used for skipping days when taking day off.
-    Enable after subscribe to hourly logging service.
+`skip` : skip today, used for skipping days when taking day off.
+`note <TEXT>`: Append TEXT to current hour's note.
 ~lc: Get daily supplement~
 """
 
 
 PROGRESS = """
+~~ *Reminder Service Progress* ~~
 2024.07.19 -
     1. Fix message length bug.
     2. Add daily reset method.
-2024.07.21 -
-    1. Fix request function
-
+2024.07.27
+    1. Add append feature
 To-Do list:
-    * _print_status log need to be a function
-    * add append feature
     * add skip feature
 """
 
 
 class CommandEnum(enum.Enum):
-    HELP = "help"
-    SUB = "sub"
-    UNSUB = "unsub"
     LOG = "log"
     AMEND = "amend"
-    PROGRESS = "progress"
     ON = "on"
     NOTE = "note"
     SKIP = "skip"
+    DEV_PRINT_STATUS = "_print_status"
+    DEV_SET_ON = "_set_on"
+    LEETCODE = "lc"
 
 
 class Agnomeing:
     def __init__(self, chat_api: syno.Bot, scheduler: BackgroundScheduler) -> None:
         self.chat_api: syno.Bot = chat_api
         self.scheduler: BackgroundScheduler = scheduler
+        self.help: str = HELP_NOTE
+        self.progress: str = PROGRESS
         self.commands = CommandEnum
+        self.command_keys: List[str] = [command.value for command in self.commands]
         self._sub_list: Dict[int, subscribe.SubInfo] = {}
         self._sub_id: Set[int] = set()
         self._sub_notes: Dict[int, List[str]] = {}
+        # routines
         self.scheduler.add_job(
             name="DailyGnome",
             func=self.angnome,
@@ -124,44 +124,45 @@ class Agnomeing:
             )
             self._sub_list[uid].idx_hour = 0
             self._sub_notes[uid] = [""] * 10
-            logging.debug(f"user:{self._sub_list[uid].u_name} have been clear")
+            logging.debug(f"User:{self._sub_list[uid].u_name} have been clear")
         logging.info("Finished cleaning all the gnomes.")
 
-    def parse_command(self, event: syno.BotEvent):
+    def parse_command(self, event: syno.BotEvent) -> syno.ReturnDict:
+        ret_dict: syno.ReturnDict = {}
+        # Check if sub
+        if event.user_id not in self._sub_id:
+            logging.debug(f"User:{event.username} is not sub")
+            ret_dict["text"] = 'You are not subscribed yet, see "help" for usage'
+            return ret_dict
+
+        # parse command
         words: list[str] = event.text.split()
         command: str = words[0]
-        ret: str = ""
         match command:
-            case self.commands.HELP:
-                ret = HELP_NOTE
-            case self.commands.SUB:
-                ret = self.register(event, True)
-            case self.commands.UNSUB:
-                ret = self.register(event, False)
-            case self.commands.LOG:
+            case self.commands.LOG.value:
                 self.show_log(event)
-                ret = ""
-            case self.commands.AMEND:
-                ret = self.amend(event)
-            case self.commands.PROGRESS:
-                ret = PROGRESS
-            case self.commands.ON:
-                ret = self.onboard(event)
-            case self.commands.NOTE:
-                ret = self.note(event)
-            case self.commands.SKIP:
-                ret = "NotImplementedError"
-            case "_print_status":
+                ret_dict["text"] = ""
+            case self.commands.AMEND.value:
+                ret_dict["text"] = self.amend(event)
+            case self.commands.ON.value:
+                ret_dict["text"] = self.onboard(event)
+            case self.commands.NOTE.value:
+                ret_dict["text"] = self.note(event)
+            case self.commands.SKIP.value:
+                ret_dict["text"] = "NotImplementedError"
+            case self.commands.DEV_PRINT_STATUS.value:
                 self._print_status(event)
-            case "_set_on":
-                ret = self._set_on_time(event)
+            case self.commands.DEV_SET_ON.value:
+                ret_dict["text"] = self._set_on_time(event)
+            case self.commands.LEETCODE.value:
+                ret_dict["text"] = self.leetcode()
             case _:
-                ret = self.check_for_note(event)
+                ret_dict["text"] = self.check_for_note(event)
 
-        logging.debug(f"parsed result:{ret}")
-        return ret
+        logging.debug(f"Parsed result:{ret_dict}")
+        return ret_dict
 
-    def _print_status(self, event) -> None:
+    def _print_status(self, event: syno.PostEvent) -> None:
         self.chat_api.web_post.send_message(
             response_text=pprint.pformat(self._sub_id),
             user_id=event.user_id,
@@ -179,12 +180,11 @@ class Agnomeing:
         # check if sub
         username, userid = event.username, event.user_id
         is_sub: bool = True if event.user_id in self._sub_id else False
-        output: str = ""
         # determin what to do
         if sub:
             if is_sub:
                 logging.debug(
-                    f"user:{event.username} is trying to subscribe but already is a subscriber."
+                    f"User:{event.username} is trying to subscribe but already is a subscriber."
                 )
                 output = 'You are already subscribed. if you need to unsubscribe, use "unsub"'
             else:
@@ -205,15 +205,16 @@ class Agnomeing:
                     ),
                     idx_hour=0,
                 )
-                self._sub_notes[userid] = [""] * 10
+                self._sub_notes[userid] = [""] * 8
                 logging.info(
                     f"{username} subscribed, current sub list:{pprint.pformat(self._sub_list)}"
                 )
-                output = "Subscribe successful. see usage for functions"
+                output = "Subscribe successful. see help for usage"
         else:
             if is_sub:
                 self._sub_id.remove(userid)
                 self._sub_list.pop(userid)
+                self._sub_notes.pop(userid)
                 logging.info(
                     f"{username} unsubscribed, current sub list:{pprint.pformat(self._sub_list)}"
                 )
@@ -227,12 +228,6 @@ class Agnomeing:
         return output
 
     def check_for_note(self, event: syno.PostEvent) -> str:  # FIXME
-        is_sub: bool = True if event.user_id in self._sub_id else False
-        if not is_sub:
-            logging.debug(f"user:{event.username} is not sub")
-            self.throw_up(event.user_id)
-            return 'You are not subscribed yet, see "help" for usage'
-
         if self._sub_list[event.user_id].wait_for_reply:
             self._sub_notes[event.user_id][
                 self._sub_list[event.user_id].idx_hour - 1
@@ -243,9 +238,8 @@ class Agnomeing:
             words: list[str] = event.text.split()
             command: str = words[0]
             paras: List[str] = words[1:]
-            self.throw_up(event.user_id)
             ret = (
-                f'unknown command: {command}\nTry "help" for current available services'
+                f'Unknown command: {command}\nTry "help" for current available services'
             )
             ret += " " + " ".join(paras)
 
@@ -260,10 +254,6 @@ class Agnomeing:
         Returns:
             str: request result
         """
-        is_sub: bool = True if event.user_id in self._sub_id else False
-        if not is_sub:
-            return 'You are not subscribed yet, see "help" for usage'
-
         note: str = " ".join(event.text.split()[1:])
         ap_note: str = event.timestamp.strftime("%H:%M") + " " + note
         idx_hour: int = self._sub_list[event.user_id].idx_hour
@@ -277,10 +267,6 @@ class Agnomeing:
         return f"On time:{self._sub_list[event.user_id].idx_hour + 1} log note:{note}"
 
     def amend(self, event: syno.PostEvent) -> str:
-        is_sub: bool = True if event.user_id in self._sub_id else False
-        if not is_sub:
-            return 'You are not subscribed yet, see "help" for usage'
-
         # parse to get hour idx, log
         logging.debug(f"user:{event.username} request for amend")
         words_space: List[str] = event.text.split(" ")
@@ -313,59 +299,57 @@ class Agnomeing:
 
     def onboard(self, event: syno.PostEvent) -> str:
         logging.debug(f"user:{event.username} request to set on board time")
-        is_sub: bool = True if event.user_id in self._sub_id else False
         now: datetime.datetime = datetime.datetime.now()
-        if not is_sub:
-            logging.debug(f"user:{event.username} is not sub")
-            return 'You are not subscribed yet, see "help" for usage'
-
         self._sub_list[event.user_id].on_time = now
         self._sub_list[event.user_id].idx_hour = 0
-        logging.info(f"user:{event.username} set on board time:{now}")
+        logging.info(f"User:{event.username} set on board time:{now}")
         return f"set on board time: {now.hour}:{now.minute}"
 
     def show_log(self, event: syno.PostEvent) -> None:
-        is_sub: bool = True if event.user_id in self._sub_id else False
-        if is_sub:
-            word_count = 0
-            for i in range(10):
-                word_count += len(self._sub_notes[event.user_id][i])
+        word_count = 0
+        for i in range(8):
+            word_count += len(self._sub_notes[event.user_id][i])
 
-            if word_count > 1500:
-                self.chat_api.web_post.send_message(
-                    response_text=(
-                        "This is your latest report: \n"
-                        f"You already on board for {self._sub_list[event.user_id].idx_hour} hours\n"
-                        f"Your on time is set at {self._sub_list[event.user_id].on_time}\n"
-                    ),
-                    user_id=event.user_id,
-                )
-                for i in range(10):
-                    self.chat_api.web_post.send_message(
-                        response_text=f"Hour {i+1}.\n    "
-                        + self._sub_notes[event.user_id][i]
-                        + "\n",
-                        user_id=event.user_id,
-                    )
-
-            else:
-                report: str = ""
-                for i in range(10):
-                    report += (
-                        f"Hour {i+1}.\n    " + self._sub_notes[event.user_id][i] + "\n"
-                    )
-                self.chat_api.web_post.send_message(
-                    response_text=(
-                        "This is your latest report: \n"
-                        f"You already on board for {self._sub_list[event.user_id].idx_hour} hours\n"
-                        f"Your on time is set at {self._sub_list[event.user_id].on_time}\n"
-                        + report
-                    ),
-                    user_id=event.user_id,
-                )
-        else:
+        if word_count > 1500:
             self.chat_api.web_post.send_message(
-                response_text='You are not subscribed yet, see "help" for usage',
+                response_text=(
+                    "This is your latest report: \n"
+                    f"You already on board for {self._sub_list[event.user_id].idx_hour} hours\n"
+                    f"Your on time is set at {self._sub_list[event.user_id].on_time}\n"
+                ),
                 user_id=event.user_id,
             )
-            logging.debug(f"user:{event.username} is not sub")
+            for i in range(8):
+                self.chat_api.web_post.send_message(
+                    response_text=f"`{i+1}.`\n"
+                    + self._sub_notes[event.user_id][i]
+                    + "\n",
+                    user_id=event.user_id,
+                )
+
+        else:
+            report: str = ""
+            for i in range(8):
+                report += f"`{i+1}.`\n" + self._sub_notes[event.user_id][i] + "\n"
+            self.chat_api.web_post.send_message(
+                response_text=(
+                    "This is your latest report: \n"
+                    f"You already on board for {self._sub_list[event.user_id].idx_hour} hours\n"
+                    f"Your on time is set at {self._sub_list[event.user_id].on_time}\n"
+                    + report
+                ),
+                user_id=event.user_id,
+            )
+
+    def leetcode(self):
+        challenge_info = RequestHandler.get_challenge_info()
+        challenge: Challenge = RequestParser.parse(challenge_info)
+        response_text: str = f"""
+Today's challenge: {challenge.title}
+Difficulty: {challenge.difficulty}
+ID: {challenge.question_id}
+Link: {challenge.problem_link}
+Success rate: {challenge.ac_rate}
+Go for a shot!!!
+"""
+        return response_text

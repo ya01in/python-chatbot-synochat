@@ -1,4 +1,4 @@
-from synochat.model import syno
+from model import syno
 from service_conf import BOT_CONF, CHANNEL_SERVICE_CONF
 
 study_bot = syno.Bot(
