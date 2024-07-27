@@ -5,8 +5,8 @@ from apscheduler.triggers.cron import CronTrigger
 from flask import Flask, jsonify, request
 from werkzeug.datastructures.structures import ImmutableMultiDict
 
-from synochat.model import chat_event
-from synochat.req.daily import RequestHandler, RequestParser
+from synochat.model import syno
+from synochat.api.daily import RequestHandler, RequestParser
 from synochat.service import study_bot, study_service
 
 app = Flask(__name__)
@@ -69,7 +69,7 @@ def take_note(user_id, messages) -> None:
     study_bot.web_post.send_message(response_text=messages, user_id=user_id)
 
 
-def parse_service(event: chat_event.PostEvent) -> str:
+def parse_service(event: syno.PostEvent) -> str:
     words: list[str] = event.text.split()
     if len(words) == 1:
         logging.warning("only trigger found")
@@ -105,7 +105,7 @@ def webhook():
     # Parse URL-encoded form data
     form_data: ImmutableMultiDict[str, str] = request.form
 
-    event = chat_event.PostEvent(**form_data)
+    event = syno.PostEvent(**form_data)
     if not event:
         logging.error(f"empty event catched, may have a error? event:{event}")
     logging.debug(f"raw event:{event}")
@@ -122,7 +122,7 @@ def webhook_autopal():
     # Parse URL-encoded form data
     form_data: ImmutableMultiDict[str, str] = request.form
 
-    event = chat_event.PostEvent(**form_data)
+    event = syno.PostEvent(**form_data)
     if not event:
         logging.error(f"empty event catched, may have a error? event:{event}")
     logging.debug(f"raw event:{event}")

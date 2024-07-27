@@ -1,9 +1,14 @@
 import dataclasses
 import datetime
 import logging
-from typing import Optional
+from typing import Optional, TypedDict
 
-from req import chat
+from api import chat
+
+
+class ReturnDict(TypedDict, total=False):
+    text: str
+    file_url: Optional[str]
 
 
 @dataclasses.dataclass
