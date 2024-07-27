@@ -86,22 +86,35 @@ class ServiceServer(Flask):
                 case "unsub":
                     ret_dict["text"] = self.register_service(event, False)
                 case _:
-                    ret_dict = self.report_unknown(event)
+                    ret_dict = self.check_input(event)
 
         logging.debug(f"parsed result:{ret_dict}")
         return ret_dict
 
-    def report_unknown(self, event: syno.PostEvent) -> syno.ReturnDict:
-        # throw up and return app
-        words: list[str] = event.text.split()
-        command: str = words[0]
-        paras: List[str] = words[1:]
-        ret_text: str = (
-            f'unknown command: {command}\nTry "help" for current available services'
-            + " "
-            + " ".join(paras)
+    def check_input(self, event: syno.PostEvent) -> syno.ReturnDict:
+        if (event.user_id not in self.agnomer._sub_id) or (
+            not self.agnomer._sub_list[event.user_id].wait_for_reply
+        ):
+            # throw up and return app
+            words: list[str] = event.text.split()
+            command: str = words[0]
+            paras: List[str] = words[1:]
+            ret_text: str = (
+                f'unknown command: {command}\nTry "help" for current available services'
+                + " "
+                + " ".join(paras)
+            )
+            return {"text": ret_text, "file_url": f"{request.host_url}download/gtu.gif"}
+
+        self.agnomer._sub_notes[event.user_id][
+            self.agnomer._sub_list[event.user_id].idx_hour - 1
+        ] += "\n" + event.text
+        self.agnomer._sub_list[event.user_id].wait_for_reply = False
+        ret: str = (
+            f"Note taken for hour {self.agnomer._sub_list[event.user_id].idx_hour}"
         )
-        return {"text": ret_text, "file_url": f"{request.host_url}download/gtu.gif"}
+
+        return {"text": ret}
 
     def show_help(self, event: syno.PostEvent) -> str:
         # show appended help
