@@ -75,15 +75,14 @@ class Agnomeing:
         self.scheduler.add_job(
             name="DailyGnome",
             func=self.angnome,
-            trigger=CronTrigger(day_of_week="mon-fri", second=1),
-            # trigger=CronTrigger(second=1),  # debug mode
+            # trigger=CronTrigger(day_of_week="mon-fri", second=1),
+            trigger=CronTrigger(second=1),
         )
 
         self.scheduler.add_job(
             name="ResetDailyGnome",
             func=self.clean_gnome,
             trigger=CronTrigger(day_of_week="mon-fri", hour=7, minute=30),
-            # trigger=CronTrigger(second=1),  # debug mode
         )
 
     # routines
@@ -91,7 +90,7 @@ class Agnomeing:
         # hourly reminder
         now: datetime.datetime = datetime.datetime.now()
         if now.hour < 22 and now.hour > 8:
-            # if now:  # debug mode
+            # if now:
             logging.info("Start angnome")
             remind_list: List[subscribe.SubInfo] = []
             for _uid, subinfo in self._sub_list.items():
@@ -124,7 +123,7 @@ class Agnomeing:
                 year=today.year, month=today.month, day=today.day, hour=10, minute=30
             )
             self._sub_list[uid].idx_hour = 0
-            self._sub_notes[uid] = [""] * 8
+            self._sub_notes[uid] = [""] * 10
             logging.debug(f"User:{self._sub_list[uid].u_name} have been clear")
         logging.info("Finished cleaning all the gnomes.")
 
