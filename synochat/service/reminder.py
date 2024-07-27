@@ -121,7 +121,7 @@ class Agnomeing:
                 year=today.year, month=today.month, day=today.day, hour=10, minute=30
             )
             self._sub_list[uid].idx_hour = 0
-            self._sub_notes[uid] = [""] * 10
+            self._sub_notes[uid] = [""] * 8
             logging.debug(f"User:{self._sub_list[uid].u_name} have been clear")
         logging.info("Finished cleaning all the gnomes.")
 
