@@ -23,7 +23,11 @@ class WebhookPostService:
 
         payload: str = "payload=" + json.dumps(message)
         try:
-            response: requests.Response = requests.post(self.income_wh_url, payload)
+            response: requests.Response = requests.post(
+                self.income_wh_url,
+                data={"payload": json.dumps(message)},
+                timeout=60,
+            )
             response.raise_for_status()  # Raise an exception if the response contains an HTTP error
         except requests.exceptions.RequestException as e:
             logging.error(f"Error sending message to Synology Chat: {e}")
